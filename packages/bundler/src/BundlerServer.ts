@@ -15,13 +15,15 @@ import { EntryPoint__factory, UserOperationStruct } from '@account-abstraction/c
 import { DebugMethodHandler } from './DebugMethodHandler'
 
 import Debug from 'debug'
+import { log } from 'console'
+import { decodeErrorReason } from '@account-abstraction/utils'
 
 const debug = Debug('aa.rpc')
 export class BundlerServer {
   app: Express
   private readonly httpServer: Server
 
-  constructor (
+  constructor(
     readonly methodHandler: UserOpMethodHandler,
     readonly debugHandler: DebugMethodHandler,
     readonly config: BundlerConfig,
@@ -44,15 +46,15 @@ export class BundlerServer {
 
   startingPromise: Promise<void>
 
-  async asyncStart (): Promise<void> {
+  async asyncStart(): Promise<void> {
     await this.startingPromise
   }
 
-  async stop (): Promise<void> {
+  async stop(): Promise<void> {
     this.httpServer.close()
   }
 
-  async _preflightCheck (): Promise<void> {
+  async _preflightCheck(): Promise<void> {
     if (await this.provider.getCode(this.config.entryPoint) === '0x') {
       this.fatal(`entrypoint not deployed at ${this.config.entryPoint}`)
     }
@@ -74,10 +76,15 @@ export class BundlerServer {
     // await EntryPoint__factory.connect(this.config.entryPoint,this.provider).callStatic.addStake(0)
     const err = await EntryPoint__factory.connect(this.config.entryPoint, this.provider).callStatic.simulateValidation(emptyUserOp)
       .catch(e => e)
-    if (err?.errorName !== 'FailedOp') {
-      this.fatal(`Invalid entryPoint contract at ${this.config.entryPoint}. wrong version?`)
-    }
+    const decoded = decodeErrorReason(err?.data ?? '')
+    const decodedMessage = decoded?.message ?? ''
+    log('err', JSON.stringify(err))
+    // log('CONFIG', this.config)
+    // if (err?.errorName !== 'FailedOp') {
+    //   this.fatal(`Invalid entryPoint contract at ${this.config.entryPoint}. wrong version?`)
+    // }
     const bal = await this.provider.getBalance(this.wallet.address)
+
     console.log('signer', this.wallet.address, 'balance', utils.formatEther(bal))
     if (bal.eq(0)) {
       this.fatal('cannot run with zero balance')
@@ -86,16 +93,16 @@ export class BundlerServer {
     }
   }
 
-  fatal (msg: string): never {
+  fatal(msg: string): never {
     console.error('FATAL:', msg)
     process.exit(1)
   }
 
-  intro (req: Request, res: Response): void {
+  intro(req: Request, res: Response): void {
     res.send(`Account-Abstraction Bundler v.${erc4337RuntimeVersion}. please use "/rpc"`)
   }
 
-  async rpc (req: Request, res: Response): Promise<void> {
+  async rpc(req: Request, res: Response): Promise<void> {
     const {
       method,
       params,
@@ -129,7 +136,7 @@ export class BundlerServer {
     }
   }
 
-  async handleMethod (method: string, params: any[]): Promise<any> {
+  async handleMethod(method: string, params: any[]): Promise<any> {
     let result: any
     switch (method) {
       case 'eth_chainId':
